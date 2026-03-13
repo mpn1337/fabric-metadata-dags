@@ -1,0 +1,48 @@
+pipeline: marketing_pipeline
+
+settings:
+  concurrency: 10
+  timeoutInSeconds: 21600
+
+defaults:
+  retry: 1
+  retryIntervalInSeconds: 20
+  timeoutPerCellInSeconds: 120
+
+activities:
+
+  - name: ingest_campaigns
+    path: /notebooks/ingestion/ingest_campaigns
+    args:
+      source: google_ads
+      date_range: last_30_days
+
+  - name: ingest_impressions
+    path: /notebooks/ingestion/ingest_impressions
+    args:
+      source: meta_ads
+      date_range: last_30_days
+
+  - name: transform_campaigns
+    path: /notebooks/transform/transform_campaigns
+    dependencies:
+      - ingest_campaigns
+
+  - name: transform_impressions
+    path: /notebooks/transform/transform_impressions
+    dependencies:
+      - ingest_impressions
+
+  - name: join_campaign_impressions
+    path: /notebooks/transform/join_campaign_impressions
+    dependencies:
+      - transform_campaigns
+      - transform_impressions
+    timeoutPerCellInSeconds: 300
+
+  - name: aggregate_marketing_kpis
+    path: /notebooks/reporting/aggregate_marketing_kpis
+    dependencies:
+      - join_campaign_impressions
+    retry: 3
+    timeoutPerCellInSeconds: 180

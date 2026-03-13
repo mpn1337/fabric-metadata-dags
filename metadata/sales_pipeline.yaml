@@ -1,0 +1,30 @@
+pipeline: sales_pipeline
+
+settings:
+  concurrency: 50
+  timeoutInSeconds: 43200
+
+defaults:
+  retry: 2
+  retryIntervalInSeconds: 30
+  timeoutPerCellInSeconds: 90
+
+activities:
+
+  - name: ingest_sales
+    path: /notebooks/ingestion/ingest_sales
+    args:
+      load_type: full
+      year: 2025
+
+  - name: transform_sales
+    path: /notebooks/transform/transform_sales
+    dependencies:
+      - ingest_sales
+
+  - name: aggregate_sales
+    path: /notebooks/transform/aggregate_sales
+    dependencies:
+      - transform_sales
+    retry: 5
+    timeoutPerCellInSeconds: 200

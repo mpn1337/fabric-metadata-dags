@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fabric-metadata-dags"
+version = "0.1.0"
+description = "Metadata-driven DAG generator for Microsoft Fabric notebook orchestration."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "nbformat>=5.9",
+    "pytest>=9.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+generate-pipeline = "fabric_metadata_dags.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
