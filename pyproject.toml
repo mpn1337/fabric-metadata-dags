@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-generate-pipeline = "fabric_metadata_dags.cli:main"
+generate-pipeline = "fabric_metadata_dags.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
