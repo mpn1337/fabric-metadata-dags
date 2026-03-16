@@ -82,6 +82,8 @@ def _format_dag(dag: dict[str, Any]) -> str:
 # Cell templates
 # ---------------------------------------------------------------------------
 
+_CELL_RUN_NOTEBOOK = "%run AquaVilla_Functions"
+
 _CELL_IMPORTS = "from notebookutils import mssparkutils"
 
 _CELL_RUN_TEMPLATE = (
@@ -97,11 +99,13 @@ def generate_notebook(
     dag: dict[str, Any],
     display_dag_graphviz: bool = False,
     output_dir: Path | str = "output",
+    include_run_cell: bool = True,
 ) -> Path:
     """Generate a ``.ipynb`` orchestration notebook for the given DAG.
 
-    The notebook contains three code cells:
+    The notebook contains three or four code cells:
 
+    0. ``%run AquaVilla_Functions``  — only when ``include_run_cell=True``
     1. ``from notebookutils import mssparkutils``
     2. ``DAG = { ... }``  — the full DAG dict as a Python literal
     3. ``mssparkutils.notebook.runMultiple(DAG, {...})``
@@ -113,6 +117,8 @@ def generate_notebook(
             :func:`meta_driven_dags.builder.build_dag`.
         display_dag_graphviz: Value injected into the
             ``displayDAGViaGraphviz`` option of ``runMultiple``.
+        include_run_cell: When ``True`` (default), prepends a cell with
+            ``%run AquaVilla_Functions`` at the top of the notebook.
         output_dir: Directory where the notebook will be written.
             Created automatically if it does not exist.
 
@@ -121,6 +127,11 @@ def generate_notebook(
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Cell 0 (optional): %run AquaVilla_Functions ----------------------
+    cell_run_notebook = (
+        new_code_cell(source=_CELL_RUN_NOTEBOOK) if include_run_cell else None
+    )
 
     # --- Cell 1: imports ---------------------------------------------------
     cell_imports = new_code_cell(source=_CELL_IMPORTS)
@@ -135,7 +146,12 @@ def generate_notebook(
     )
 
     # --- Assemble notebook -------------------------------------------------
-    nb = new_notebook(cells=[cell_imports, cell_dag, cell_run])
+    cells = ([cell_run_notebook] if cell_run_notebook else []) + [
+        cell_imports,
+        cell_dag,
+        cell_run,
+    ]
+    nb = new_notebook(cells=cells)
     nb.metadata["kernelspec"] = {
         "display_name": "Python 3",
         "language": "python",

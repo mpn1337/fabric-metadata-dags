@@ -15,7 +15,6 @@ Usage::
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -79,6 +78,7 @@ def _process_one(
     yaml_path: Path,
     output_dir: Path,
     display_dag: bool,
+    include_run_cell: bool = True,
 ) -> Path | None:
     """Load, validate, and generate a notebook for a single YAML file.
 
@@ -132,6 +132,7 @@ def _process_one(
             dag=dag,
             display_dag_graphviz=display_dag,
             output_dir=output_dir,
+            include_run_cell=include_run_cell,
         )
     except OSError as exc:
         logger.error("Failed to write notebook: %s", exc)
@@ -170,6 +171,11 @@ def main(
         "--display-dag",
         help="Set displayDAGViaGraphviz=True in the generated notebook.",
     ),
+    include_run_cell: bool = typer.Option(
+        True,
+        "--run-cell/--no-run-cell",
+        help="Prepend a %%run AquaVilla_Functions cell at the top of the notebook.",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -178,18 +184,19 @@ def main(
 ) -> None:
     _setup_logging(verbose)
     logger.debug(
-        "yaml_path=%s  metadata_dir=%s  output_dir=%s  display_dag=%s",
+        "yaml_path=%s  metadata_dir=%s  output_dir=%s  display_dag=%s  include_run_cell=%s",
         yaml_path,
         metadata_dir,
         output_dir,
         display_dag,
+        include_run_cell,
     )
 
     yaml_paths = _resolve_yaml_paths(yaml_path, metadata_dir)
 
     failed: list[Path] = []
     for path in yaml_paths:
-        out = _process_one(path, output_dir, display_dag)
+        out = _process_one(path, output_dir, display_dag, include_run_cell)
         if out is None:
             failed.append(path)
         else:
