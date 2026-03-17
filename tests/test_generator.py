@@ -62,6 +62,7 @@ class TestNotebookStructure:
             _minimal_dag(),
             display_dag_graphviz=display_dag,
             output_dir=tmp_path,
+            include_run_cell=False,
         )
         return json.loads(out.read_text(encoding="utf-8"))
 
