@@ -1,8 +1,8 @@
-"""Tests for fabric_metadata_dags.validator — DAG structural validation."""
+"""Tests for fabric_metadata_dags.validator — DAG structural validation and notebook existence checks."""
 
 import pytest
 
-from fabric_metadata_dags.validator import validate_dag
+from fabric_metadata_dags.validator import validate_dag, validate_notebook_paths
 
 
 # ---------------------------------------------------------------------------
@@ -126,3 +126,68 @@ class TestCircularDependencies:
         for i in range(1, 20):
             chain.append(_act(f"n{i}", [f"n{i - 1}"]))
         validate_dag(chain)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# validate_notebook_paths
+# ---------------------------------------------------------------------------
+
+
+def _act_with_path(name: str, path: str) -> dict:
+    return {"name": name, "path": path}
+
+
+class TestValidateNotebookPaths:
+    def test_no_error_when_all_paths_present(self):
+        activities = [
+            _act_with_path("a", "/notebooks/ingestion/ingest_sales"),
+            _act_with_path("b", "/notebooks/transform/transform_sales"),
+        ]
+        available = {"ingest_sales", "transform_sales"}
+        validate_notebook_paths(activities, available)  # must not raise
+
+    def test_raises_when_notebook_missing(self):
+        activities = [_act_with_path("a", "/notebooks/ingestion/missing_nb")]
+        with pytest.raises(ValueError, match="missing_nb"):
+            validate_notebook_paths(activities, {"other_nb"})
+
+    def test_error_includes_activity_name(self):
+        activities = [_act_with_path("my_activity", "/notebooks/missing_nb")]
+        with pytest.raises(ValueError, match="my_activity"):
+            validate_notebook_paths(activities, set())
+
+    def test_all_missing_reported_together(self):
+        activities = [
+            _act_with_path("a", "/nb/missing_one"),
+            _act_with_path("b", "/nb/missing_two"),
+        ]
+        with pytest.raises(ValueError) as exc_info:
+            validate_notebook_paths(activities, set())
+        msg = str(exc_info.value)
+        assert "missing_one" in msg
+        assert "missing_two" in msg
+
+    def test_extracts_last_path_segment(self):
+        activities = [_act_with_path("a", "/deeply/nested/folder/my_notebook")]
+        validate_notebook_paths(activities, {"my_notebook"})  # must not raise
+
+    def test_bare_display_name_matches_directly(self):
+        activities = [_act_with_path("a", "my_notebook")]
+        validate_notebook_paths(activities, {"my_notebook"})  # must not raise
+
+    def test_empty_activities_no_error(self):
+        validate_notebook_paths([], {"any_notebook"})  # must not raise
+
+    def test_empty_available_raises_for_activities_with_paths(self):
+        activities = [_act_with_path("a", "/nb/some_notebook")]
+        with pytest.raises(ValueError):
+            validate_notebook_paths(activities, set())
+
+    def test_activity_without_path_skipped(self):
+        activities = [{"name": "a"}]
+        validate_notebook_paths(activities, set())  # must not raise
+
+    def test_match_is_case_sensitive(self):
+        activities = [_act_with_path("a", "/nb/MyNotebook")]
+        with pytest.raises(ValueError, match="MyNotebook"):
+            validate_notebook_paths(activities, {"mynotebook"})

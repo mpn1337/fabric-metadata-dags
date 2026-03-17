@@ -21,8 +21,11 @@ Usage::
     generate-pipeline lint metadata/sales_pipeline.yaml
     generate-pipeline lint   # all *.yaml in metadata/
 
-    # Scaffold a new pipeline YAML
-    generate-pipeline init my_pipeline
+    # Validate pipelines (structural + optional Fabric workspace check)
+    generate-pipeline validate metadata/sales_pipeline.yaml
+    generate-pipeline validate metadata/sales_pipeline.yaml --workspace "My Workspace"
+    generate-pipeline validate   # all *.yaml in metadata/
+
     generate-pipeline init my_pipeline --activities 3 --metadata-dir pipelines/
 """
 
@@ -36,10 +39,16 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
+from fabric_metadata_dags.fabric_client import get_workspace_notebooks
 from fabric_metadata_dags.linter import LintSeverity, lint_pipeline
 from fabric_metadata_dags.loader import load_pipeline
 from fabric_metadata_dags.pipeline import run_pipeline
 from fabric_metadata_dags.scaffold import scaffold_pipeline
+from fabric_metadata_dags.validator import (
+    validate_dag,
+    validate_notebook_paths,
+    validate_pipeline_schema,
+)
 
 app = typer.Typer(
     name="generate-pipeline",
@@ -251,6 +260,118 @@ def init(
             "  Remove it first or choose a different name."
         )
         raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# validate command
+# ---------------------------------------------------------------------------
+
+
+@app.command("validate")
+def validate(
+    yaml_path: Optional[Path] = typer.Argument(
+        default=None,
+        help=(
+            "Path to a specific pipeline YAML file. "
+            "When omitted, all *.yaml / *.yml files inside --metadata-dir are validated."
+        ),
+        show_default=False,
+    ),
+    metadata_dir: Path = typer.Option(
+        Path("metadata"),
+        "--metadata-dir",
+        metavar="DIR",
+        help="Directory scanned for pipelines when no YAML_PATH is given.",
+    ),
+    workspace: Optional[str] = typer.Option(
+        None,
+        "--workspace",
+        metavar="NAME",
+        help=(
+            "Fabric workspace display name. When provided, validates that every "
+            "notebook path exists in the workspace (requires 'az login')."
+        ),
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Enable verbose (DEBUG) logging.",
+    ),
+) -> None:
+    """Validate pipeline YAML files — structure and optionally Fabric notebook existence."""
+    _setup_logging(verbose)
+
+    yaml_paths = _resolve_yaml_paths(yaml_path, metadata_dir)
+
+    # Fetch workspace notebooks once upfront (shared across all files)
+    available_notebooks: set[str] | None = None
+    if workspace:
+        try:
+            available_notebooks = get_workspace_notebooks(workspace)
+            logger.debug(
+                "Fetched %d notebook(s) from workspace '%s'",
+                len(available_notebooks),
+                workspace,
+            )
+        except (RuntimeError, ValueError, Exception) as exc:
+            logger.error("Could not fetch notebooks from Fabric: %s", exc)
+            raise typer.Exit(code=1)
+
+    failed: list[Path] = []
+    for path in yaml_paths:
+        errors = _validate_one(path, available_notebooks)
+        if errors:
+            console.print(f"\n[bold]{path}[/bold]")
+            for err in errors:
+                console.print(f"  [red]✗[/red] {err}")
+            failed.append(path)
+        else:
+            console.print(f"[green]✓[/green] Valid: [bold]{path}[/bold]")
+
+    if failed:
+        console.print(f"\n[red]✗ {len(failed)} pipeline(s) failed validation[/red]")
+        raise typer.Exit(code=1)
+
+
+def _validate_one(
+    yaml_path: Path,
+    available_notebooks: set[str] | None,
+) -> list[str]:
+    """Run all validation checks on a single pipeline YAML.
+
+    Returns a list of error strings (empty = valid).
+    """
+    try:
+        pipeline = load_pipeline(yaml_path)
+    except (FileNotFoundError, ValueError) as exc:
+        return [str(exc)]
+
+    errors: list[str] = []
+
+    try:
+        validate_pipeline_schema(pipeline)
+    except ValueError as exc:
+        errors.append(str(exc))
+
+    # Resolve activities for DAG checks (reuse config resolution)
+    from fabric_metadata_dags.config import resolve_activity
+
+    pipeline_defaults: dict = pipeline.get("defaults", {})
+    raw_activities: list[dict] = pipeline.get("activities", [])
+    resolved = [resolve_activity(a, pipeline_defaults) for a in raw_activities]
+
+    try:
+        validate_dag(resolved)
+    except ValueError as exc:
+        errors.append(str(exc))
+
+    if available_notebooks is not None and not errors:
+        try:
+            validate_notebook_paths(resolved, available_notebooks)
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    return errors
 
 
 if __name__ == "__main__":

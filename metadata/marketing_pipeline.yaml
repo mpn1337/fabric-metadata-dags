@@ -11,38 +11,23 @@ defaults:
 
 activities:
 
-  - name: ingest_campaigns
-    path: /notebooks/ingestion/ingest_campaigns
+  - name: Load_Dim_Customer
+    path: Load_Dim_Customer
     args:
       source: google_ads
       date_range: last_30_days
-
-  - name: ingest_impressions
-    path: /notebooks/ingestion/ingest_impressions
+    
+  - name: Load_Dim_Project
+    path: Load_Dim_Project
     args:
       source: meta_ads
       date_range: last_30_days
 
-  - name: transform_campaigns
-    path: /notebooks/transform/transform_campaigns
+  - name: Load_Dim_Room
+    path: Load_Dim_Room
     dependencies:
-      - ingest_campaigns
+      - Load_Dim_Customer
 
-  - name: transform_impressions
-    path: /notebooks/transform/transform_impressions
-    dependencies:
-      - ingest_impressions
-
-  - name: join_campaign_impressions
-    path: /notebooks/transform/join_campaign_impressions
-    dependencies:
-      - transform_campaigns
-      - transform_impressions
+  - name: Load_Dim_Resort
+    path: Load_Dim_Resort
     timeoutPerCellInSeconds: 300
-
-  - name: aggregate_marketing_kpis
-    path: /notebooks/reporting/aggregate_marketing_kpis
-    dependencies:
-      - join_campaign_impressions
-    retry: 3
-    timeoutPerCellInSeconds: 180

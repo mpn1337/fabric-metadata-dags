@@ -1,4 +1,5 @@
-"""DAG validation: schema checks, duplicate names, missing/circular dependencies."""
+"""DAG validation: schema checks, duplicate names, missing/circular dependencies,
+and optional Fabric workspace notebook existence checks."""
 
 from __future__ import annotations
 
@@ -149,3 +150,46 @@ def _check_circular_dependencies(activities: list[dict[str, Any]]) -> None:
     for name in graph:
         if state[name] == UNVISITED:
             dfs(name)
+
+
+# ---------------------------------------------------------------------------
+# Fabric workspace notebook existence check
+# ---------------------------------------------------------------------------
+
+
+def validate_notebook_paths(
+    activities: list[dict[str, Any]],
+    available_notebooks: set[str],
+) -> None:
+    """Check that every activity's notebook path exists in *available_notebooks*.
+
+    Path matching uses the last ``/``-separated segment of the ``path`` field
+    as the notebook display name, e.g.::
+
+        /notebooks/ingestion/ingest_sales  →  ingest_sales
+
+    All missing notebooks are reported together in a single :class:`ValueError`.
+
+    Args:
+        activities: Activity dicts, each with at least a ``name`` and
+            ``path`` key.
+        available_notebooks: Set of notebook display names fetched from the
+            Fabric workspace (case-sensitive).
+
+    Raises:
+        ValueError: If one or more notebook paths cannot be found.
+    """
+    missing: list[str] = []
+    for activity in activities:
+        path: str = activity.get("path", "")
+        display_name = path.rstrip("/").rsplit("/", 1)[-1]
+        if display_name and display_name not in available_notebooks:
+            missing.append(
+                f'Activity "{activity["name"]}": '
+                f'notebook "{display_name}" not found in workspace'
+            )
+    if missing:
+        raise ValueError(
+            "Notebook existence check failed:\n"
+            + "\n".join(f"  • {m}" for m in missing)
+        )
