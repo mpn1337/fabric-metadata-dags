@@ -22,6 +22,8 @@ activities:
     args:
       source: meta_ads
       date_range: last_30_days
+    dependencies:
+      - Load_Dim_Resort
 
   - name: Load_Dim_Room
     path: Load_Dim_Room

@@ -108,13 +108,19 @@ def _check_duplicate_names(activities: list[dict[str, Any]]) -> None:
 
 def _check_missing_dependencies(activities: list[dict[str, Any]]) -> None:
     known = {a["name"] for a in activities}
+    errors: list[str] = []
     for activity in activities:
         for dep in activity.get("dependencies", []):
             if dep not in known:
-                raise ValueError(
+                errors.append(
                     f'Activity "{activity["name"]}" depends on "{dep}", '
                     f"but no such activity exists in this pipeline."
                 )
+    if errors:
+        raise ValueError(
+            "Missing dependency error(s):\n"
+            + "\n".join(f"  \u2022 {e}" for e in errors)
+        )
 
 
 def _check_circular_dependencies(activities: list[dict[str, Any]]) -> None:
@@ -133,16 +139,18 @@ def _check_circular_dependencies(activities: list[dict[str, Any]]) -> None:
     state: dict[str, int] = {name: UNVISITED for name in graph}
     stack: list[str] = []  # tracks the current DFS path for error reporting
 
+    cycles: list[str] = []
+
     def dfs(node: str) -> None:
         state[node] = VISITING
         stack.append(node)
         for dep in graph[node]:
             if state[dep] == VISITING:
-                # Found a back-edge → report the cycle.
+                # Found a back-edge → record the cycle and keep exploring.
                 cycle_start = stack.index(dep)
                 cycle_path = " → ".join(stack[cycle_start:] + [dep])
-                raise ValueError(f"Circular dependency detected: {cycle_path}")
-            if state[dep] == UNVISITED:
+                cycles.append(cycle_path)
+            elif state[dep] == UNVISITED:
                 dfs(dep)
         stack.pop()
         state[node] = VISITED
@@ -150,6 +158,10 @@ def _check_circular_dependencies(activities: list[dict[str, Any]]) -> None:
     for name in graph:
         if state[name] == UNVISITED:
             dfs(name)
+
+    if cycles:
+        cycle_list = "\n".join(f"  \u2022 {c}" for c in cycles)
+        raise ValueError(f"Circular dependency detected:\n{cycle_list}")
 
 
 # ---------------------------------------------------------------------------
