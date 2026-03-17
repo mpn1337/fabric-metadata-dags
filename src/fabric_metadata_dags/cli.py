@@ -292,6 +292,11 @@ def validate(
             "notebook path exists in the workspace (requires 'az login')."
         ),
     ),
+    refresh_cache: bool = typer.Option(
+        False,
+        "--refresh-cache",
+        help="Force a fresh fetch from the Fabric API, ignoring any cached notebook list.",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -307,7 +312,9 @@ def validate(
     available_notebooks: set[str] | None = None
     if workspace:
         try:
-            available_notebooks = get_workspace_notebooks(workspace)
+            available_notebooks = get_workspace_notebooks(
+                workspace, refresh_cache=refresh_cache
+            )
             logger.debug(
                 "Fetched %d notebook(s) from workspace '%s'",
                 len(available_notebooks),

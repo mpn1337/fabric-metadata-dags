@@ -255,3 +255,49 @@ class TestGetWorkspaceNotebooks:
         assert cache_file.exists()
         data = json.loads(cache_file.read_text())
         assert data["notebooks"] == ["nb_a"]
+
+    def test_refresh_cache_bypasses_fresh_cache(self, tmp_path):
+        cache_file = tmp_path / "ws-1.json"
+        with patch.object(fabric_client, "_cache_path", return_value=cache_file):
+            _write_cache("ws-1", ["stale_nb"])
+
+        with patch.object(fabric_client, "_cache_path", return_value=cache_file):
+            with patch(
+                "fabric_metadata_dags.fabric_client._get_access_token",
+                return_value="tok",
+            ):
+                with patch(
+                    "fabric_metadata_dags.fabric_client._resolve_workspace_id",
+                    return_value="ws-1",
+                ):
+                    with patch(
+                        "fabric_metadata_dags.fabric_client._list_notebooks",
+                        return_value=["fresh_nb"],
+                    ) as mock_list:
+                        result = get_workspace_notebooks(
+                            "My Workspace", refresh_cache=True
+                        )
+        mock_list.assert_called_once()
+        assert result == {"fresh_nb"}
+
+    def test_refresh_cache_overwrites_cached_data(self, tmp_path):
+        cache_file = tmp_path / "ws-1.json"
+        with patch.object(fabric_client, "_cache_path", return_value=cache_file):
+            _write_cache("ws-1", ["old_nb"])
+
+        with patch.object(fabric_client, "_cache_path", return_value=cache_file):
+            with patch(
+                "fabric_metadata_dags.fabric_client._get_access_token",
+                return_value="tok",
+            ):
+                with patch(
+                    "fabric_metadata_dags.fabric_client._resolve_workspace_id",
+                    return_value="ws-1",
+                ):
+                    with patch(
+                        "fabric_metadata_dags.fabric_client._list_notebooks",
+                        return_value=["new_nb"],
+                    ):
+                        get_workspace_notebooks("My Workspace", refresh_cache=True)
+        data = json.loads(cache_file.read_text())
+        assert data["notebooks"] == ["new_nb"]

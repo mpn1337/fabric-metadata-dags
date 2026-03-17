@@ -34,7 +34,9 @@ _CACHE_TTL_SECONDS = 600  # 10 minutes
 # ---------------------------------------------------------------------------
 
 
-def get_workspace_notebooks(workspace_name: str) -> set[str]:
+def get_workspace_notebooks(
+    workspace_name: str, refresh_cache: bool = False
+) -> set[str]:
     """Return the set of notebook display names in *workspace_name*.
 
     Results are cached per workspace for :data:`_CACHE_TTL_SECONDS` seconds in
@@ -43,6 +45,8 @@ def get_workspace_notebooks(workspace_name: str) -> set[str]:
 
     Args:
         workspace_name: Display name of the Fabric workspace (case-sensitive).
+        refresh_cache: When ``True``, bypass the cache and force a fresh API
+            call, overwriting any existing cached data.
 
     Returns:
         Set of notebook display names, e.g. ``{"ingest_sales", "transform_sales"}``.
@@ -55,12 +59,19 @@ def get_workspace_notebooks(workspace_name: str) -> set[str]:
     token = _get_access_token()
     workspace_id = _resolve_workspace_id(token, workspace_name)
 
-    cached = _read_cache(workspace_id)
-    if cached is not None:
-        logger.debug("Cache hit for workspace %s (%s)", workspace_name, workspace_id)
-        return set(cached)
+    if not refresh_cache:
+        cached = _read_cache(workspace_id)
+        if cached is not None:
+            logger.debug(
+                "Cache hit for workspace %s (%s)", workspace_name, workspace_id
+            )
+            return set(cached)
 
-    logger.debug("Cache miss — fetching notebooks for workspace %s", workspace_name)
+    logger.debug(
+        "Fetching notebooks for workspace %s (refresh_cache=%s)",
+        workspace_name,
+        refresh_cache,
+    )
     notebooks = _list_notebooks(token, workspace_id)
     _write_cache(workspace_id, notebooks)
     return set(notebooks)
